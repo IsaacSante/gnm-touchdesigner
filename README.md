@@ -1,5 +1,7 @@
 # GNM for TouchDesigner
 
+[![Download .tox](https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_DOWNLOAD-google__gnm__model.tox-2ea44f?style=for-the-badge)](https://github.com/IsaacSante/gnm-touchdesigner/releases/latest/download/google_gnm_model.tox)
+
 [Google GNM Head](https://github.com/google/GNM) — a parametric 3D human head
 model learned from real 3D scans — as a single, self-contained TouchDesigner
 component. Drag one `.tox` into your project and you get a fully controllable
