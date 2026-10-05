@@ -16,7 +16,7 @@ Inputs:
 The method follows gnm-webcam-puppet's solver: per frame, a similarity fit of
 the rigid points gives head pose; the remaining displacement from the neutral
 reference is projected onto a per-region subset of the expression basis with
-ridge regularization. Both projections are a single precomputed matrix here.
+ridge regularization; the solve is a single matrix product per frame.
 """
 import os
 import sys
@@ -40,19 +40,6 @@ IDENTITY_REGULARIZATION = 2e-3
 # than the expression solve, where they'd be misread as eyelid shapes.
 IRIS_FIRST = 468
 IRIS_CENTRES = (468, 473)
-
-
-def ridge_projection(basis_rows, regularization):
-    """Matrix P with c = P @ offsets minimizing ||B c - offsets||^2 + lam ||c||^2.
-
-    Same construction as gnm.shape.fitting_utils.project_on_pca.PCABasisProjection:
-    pinv of [B; sqrt(lam) I], keeping the columns that multiply the offsets.
-    basis_rows: (K, N) -- K components, N = 3 * number of points.
-    """
-    b = basis_rows.T.astype(np.float64)                      # (N, K)
-    k = b.shape[1]
-    lhs = np.concatenate([b, np.sqrt(regularization + 1e-16) * np.eye(k)])
-    return np.linalg.pinv(lhs)[:, :b.shape[0]].astype(np.float32)
 
 
 def main():
@@ -81,12 +68,8 @@ def main():
     components = np.array(sorted(components), np.int32)
 
     expr_basis = gnm['expression_basis'][components][:, vertices[expr_rows]]   # (K, Me, 3)
-    expr_proj = ridge_projection(expr_basis.reshape(len(components), -1),
-                                 EXPRESSION_REGULARIZATION)
 
     id_basis = gnm['vertex_identity_basis'][:IDENTITY_COMPONENTS][:, vertices[expr_rows]]
-    id_proj = ridge_projection(id_basis.reshape(IDENTITY_COMPONENTS, -1),
-                               IDENTITY_REGULARIZATION)
 
     # Which iris belongs to which GNM eye joint: match by side (x sign).
     joints = [str(n) for n in gnm['joint_names']]
@@ -114,9 +97,14 @@ def main():
         rigid=rigid,
         reference=reference,
         expr_rows=expr_rows,
-        expr_proj=expr_proj,
+        # Basis rows at the corresponded points, (K, 3 * points). The ridge
+        # projections are built from these at runtime, so the depth weight
+        # can be a parameter (face_fit_callbacks.projections).
+        expr_basis=expr_basis.reshape(len(components), -1).astype(np.float32),
+        expr_regularization=np.float32(EXPRESSION_REGULARIZATION),
         expr_channels=np.array(['e_' + names[i] for i in components]),
-        id_proj=id_proj,
+        id_basis=id_basis.reshape(IDENTITY_COMPONENTS, -1).astype(np.float32),
+        id_regularization=np.float32(IDENTITY_REGULARIZATION),
         id_channels=np.array(['i_' + str(n) for n in gnm['identity_names'][:IDENTITY_COMPONENTS]]),
         left_iris_row=np.int32(iris_rows['left_eye']),
         right_iris_row=np.int32(iris_rows['right_eye']),

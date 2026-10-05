@@ -115,11 +115,11 @@ if len(sys.argv) > 2:
         disp_s, head_rot = ff.landmark_displacement(d, lms, w / h)
         expr, head, gaze = ff.solve(d, disp_s, head_rot)
         full = np.zeros(len(expr_names))
-        full[comp_idx] = expr * 2.0                             # default Expression Gain
+        full[comp_idx] = np.clip(expr * 1.5, -3, 3)             # default gain and clamp
         verts = template + np.einsum('k,kvc->vc', full, full_basis)
         top = np.argsort(-np.abs(expr))[:4]
         print('\n%s: head rx %.1f ry %.1f rz %.1f deg, gaze L %s R %s' % (
             name, *head, np.round(gaze['left'], 1), np.round(gaze['right'], 1)))
         print('  strongest:', ', '.join('%s %.2f' % (d['expr_channels'][i], expr[i]) for i in top))
-        render(verts, os.path.join(work, name + '_fit.png'), name + ' (expression only, gain 2)')
+        render(verts, os.path.join(work, name + '_fit.png'), name + ' (expression only, gain 1.5, clamp 3)')
     print('\nRenders in', os.path.relpath(work))

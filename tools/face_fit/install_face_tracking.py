@@ -10,7 +10,7 @@
 #   * adds a Script CHOP `face_fit` between `override` and `to_samples`
 #   * replaces `xforms_callbacks` so tracked head/eye pose adds to the Pose page
 #   * adds a Tracking page: Landmarks CHOP, Face Tracking, Expression Gain,
-#     Smoothing, Gaze Gain, Apply Identity, Calibrate Neutral Face, Clear Calibration
+#     Max Coefficient, Depth Weight, Smoothing, Gaze Gain, Apply Identity, Calibrate Neutral Face, Clear Calibration
 #   * adds a Parameter Execute DAT that handles the two pulses
 
 import os
@@ -83,6 +83,10 @@ def install():
     _par(page, 'CHOP', 'Landmarkchop', 'Landmarks CHOP')
     _par(page, 'Toggle', 'Tracking', 'Face Tracking', default=True)
     _par(page, 'Float', 'Expressiongain', 'Expression Gain', default=1.5, normMin=0, normMax=4)
+    _par(page, 'Float', 'Maxcoefficient', 'Max Coefficient', default=3.0, normMin=0.5, normMax=5,
+         min=0, clampMin=True)
+    _par(page, 'Float', 'Depthweight', 'Depth Weight', default=0.2, normMin=0, normMax=1,
+         min=0, max=1, clampMin=True, clampMax=True)
     _par(page, 'Float', 'Smoothing', 'Smoothing', default=0.4, normMin=0, normMax=0.95,
          min=0, max=0.95, clampMin=True, clampMax=True)
     _par(page, 'Float', 'Gazegain', 'Gaze Gain', default=1.0, normMin=0, normMax=3)

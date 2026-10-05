@@ -28,11 +28,34 @@ import numpy as np
 
 _data = None
 _smoothed = None
+_proj_cache = {}
 
 
 def load_data(raw_bytes):
     z = np.load(io.BytesIO(raw_bytes))
     return {k: z[k] for k in z.files}
+
+
+def projections(d, depth_weight):
+    """Weighted ridge projection matrices (expression, identity).
+
+    c = (B^T W B + lam I)^-1 B^T W y, with W weighting each point's z by
+    depth_weight: MediaPipe's depth is its least reliable output, worst on an
+    open mouth, and trusting it fully makes the lips balloon outwards.
+    """
+    key = round(float(depth_weight), 4)
+    if key not in _proj_cache:
+        out = []
+        for basis, lam in ((d['expr_basis'], d['expr_regularization']),
+                           (d['id_basis'], d['id_regularization'])):
+            b = basis.T.astype(np.float64)                    # (N, K)
+            w = np.tile([1.0, 1.0, key], b.shape[0] // 3)
+            btw = b.T * w
+            out.append(np.linalg.solve(btw @ b + float(lam) * np.eye(b.shape[1]),
+                                       btw).astype(np.float32))
+        _proj_cache.clear()
+        _proj_cache[key] = tuple(out)
+    return _proj_cache[key]
 
 
 def fit_similarity(source, target):
@@ -72,11 +95,11 @@ def landmark_displacement(d, landmarks, aspect):
     return aligned - ref, rot.T
 
 
-def solve(d, disp, head_rot, baseline=None):
+def solve(d, disp, head_rot, baseline=None, depth_weight=0.2):
     """Expression coefficients, head Euler angles, and per-eye gaze angles."""
     if baseline is not None:
         disp = disp - baseline
-    expr = d['expr_proj'] @ disp[d['expr_rows']].ravel()
+    expr = projections(d, depth_weight)[0] @ disp[d['expr_rows']].ravel()
     r = float(d['eye_radius'])
     gaze = {}
     for side in ('left', 'right'):
@@ -86,8 +109,8 @@ def solve(d, disp, head_rot, baseline=None):
     return expr, euler_xyz_deg(head_rot), gaze
 
 
-def solve_identity(d, baseline):
-    return d['id_proj'] @ baseline[d['expr_rows']].ravel()
+def solve_identity(d, baseline, depth_weight=0.2):
+    return projections(d, depth_weight)[1] @ baseline[d['expr_rows']].ravel()
 
 
 # ---------------------------------------------------------------- TouchDesigner
@@ -128,18 +151,22 @@ def onCook(scriptOp):
         start = lm_chop['p000x'].index
         landmarks = arr[start:start + 478 * 3, 0].reshape(478, 3)
         aspect = lm_chop['image_width'][0] / max(1.0, lm_chop['image_height'][0])
+        depth_weight = float(comp.par.Depthweight.eval())
         disp, head_rot = landmark_displacement(d, landmarks, aspect)
 
         if scriptOp.fetch('calibrate_request', False, search=False):
             scriptOp.unstore('calibrate_request')
             baseline = disp.copy()
             scriptOp.store('baseline', baseline)
-            scriptOp.store('identity', solve_identity(d, baseline))
+            scriptOp.store('identity', solve_identity(d, baseline, depth_weight))
             _smoothed = None
 
-        expr, head, gaze = solve(d, disp, head_rot, baseline)
+        expr, head, gaze = solve(d, disp, head_rot, baseline, depth_weight)
+        # Clamp after the gain: GNM's coefficients are meant to stay within
+        # about +/-3, and beyond that shapes extrapolate into artefacts.
+        limit = float(comp.par.Maxcoefficient.eval())
         frame = np.concatenate([
-            expr * comp.par.Expressiongain.eval(),
+            np.clip(expr * comp.par.Expressiongain.eval(), -limit, limit),
             head,
             gaze['left'] * comp.par.Gazegain.eval(),
             gaze['right'] * comp.par.Gazegain.eval()])
