@@ -145,6 +145,13 @@ def onCook(scriptOp):
         _data = load_data(bytes(comp.vfs['face_fit.npz'].byteArray))
     d = _data
     baseline = scriptOp.fetch('baseline', None, search=False)
+    if baseline is not None and np.shape(baseline) != d['reference'].shape:
+        # Calibrated against an older face_fit.npz (different landmark set).
+        scriptOp.unstore('baseline')
+        scriptOp.unstore('identity')
+        baseline = None
+        print('GNM face tracking: calibration was made with older tracking data '
+              'and has been cleared -- press Calibrate Neutral Face again.')
 
     if present:
         arr = lm_chop.numpyArray()
