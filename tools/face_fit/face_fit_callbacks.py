@@ -99,7 +99,10 @@ def solve(d, disp, head_rot, baseline=None, depth_weight=0.2):
     """Expression coefficients, head Euler angles, and per-eye gaze angles."""
     if baseline is not None:
         disp = disp - baseline
-    expr = projections(d, depth_weight)[0] @ disp[d['expr_rows']].ravel()
+    # TouchDesigner's numpy (Accelerate BLAS) raises spurious divide/overflow
+    # warnings from matmul on Apple Silicon; the results are finite.
+    with np.errstate(all='ignore'):
+        expr = projections(d, depth_weight)[0] @ disp[d['expr_rows']].ravel()
     r = float(d['eye_radius'])
     gaze = {}
     for side in ('left', 'right'):
@@ -110,7 +113,25 @@ def solve(d, disp, head_rot, baseline=None, depth_weight=0.2):
 
 
 def solve_identity(d, baseline, depth_weight=0.2):
-    return projections(d, depth_weight)[1] @ baseline[d['expr_rows']].ravel()
+    with np.errstate(all='ignore'):
+        return projections(d, depth_weight)[1] @ baseline[d['expr_rows']].ravel()
+
+
+def limit_expression(expr, limit):
+    """Scale the whole vector down so no coefficient exceeds the limit.
+
+    Clamping each coefficient separately breaks the combination the solver
+    found -- e.g. it cuts the jaw-opening component but keeps the smaller
+    ones that shape the lips around an open jaw, which leaves odd lips on a
+    half-open mouth. Scaling keeps the shape and only reduces its strength.
+    """
+    peak = float(np.max(np.abs(expr))) if len(expr) else 0.0
+    return expr * (limit / peak) if peak > limit > 0 else expr
+
+
+def tongue_for(d, expr):
+    with np.errstate(all='ignore'):
+        return d['tongue_follow'] @ expr
 
 
 # ---------------------------------------------------------------- TouchDesigner
@@ -169,11 +190,11 @@ def onCook(scriptOp):
             _smoothed = None
 
         expr, head, gaze = solve(d, disp, head_rot, baseline, depth_weight)
-        # Clamp after the gain: GNM's coefficients are meant to stay within
+        # Limit after the gain: GNM's coefficients are meant to stay within
         # about +/-3, and beyond that shapes extrapolate into artefacts.
         limit = float(comp.par.Maxcoefficient.eval())
         frame = np.concatenate([
-            np.clip(expr * comp.par.Expressiongain.eval(), -limit, limit),
+            limit_expression(expr * comp.par.Expressiongain.eval(), limit),
             head,
             gaze['left'] * comp.par.Gazegain.eval(),
             gaze['right'] * comp.par.Gazegain.eval()])
@@ -183,7 +204,10 @@ def onCook(scriptOp):
     if comp.par.Tracking.eval() and _smoothed is not None:
         # Hold the last pose while the face is lost.
         n = len(d['expr_channels'])
-        for name, v in zip(d['expr_channels'], _smoothed[:n]):
+        values = list(zip(d['expr_channels'], _smoothed[:n]))
+        if comp.par.Tonguefollowsjaw.eval():
+            values += list(zip(d['tongue_channels'], tongue_for(d, _smoothed[:n])))
+        for name, v in values:
             c = scriptOp[str(name)]
             if c is not None:
                 c[0] += float(v)

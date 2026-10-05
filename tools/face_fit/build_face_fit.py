@@ -35,6 +35,11 @@ REGION_COMPONENTS = {'left_eye_region': 40, 'right_eye_region': 40,
 EXPRESSION_REGULARIZATION = 1e-5
 IDENTITY_COMPONENTS = 40
 IDENTITY_REGULARIZATION = 2e-3
+# The tongue isn't visible to the tracker, so its coefficients would stay at
+# zero -- and then an opening jaw leaves the tongue behind, bulging into the
+# mouth (it reads as a swollen lower lip). Instead, tongue components are set
+# so the tongue moves with the lower teeth.
+TONGUE_FOLLOW_REGULARIZATION = 1e-4
 
 # MediaPipe iris centres. Iris landmarks drive the eye joints (gaze) rather
 # than the expression solve, where they'd be misread as eyelid shapes.
@@ -133,6 +138,19 @@ def main():
 
     id_basis = gnm['vertex_identity_basis'][:IDENTITY_COMPONENTS][:, vertices[expr_rows]]
 
+    # Tongue-follows-jaw: for each solved component k, the tongue coefficients
+    # t_k that make the tongue move like the lower teeth do under k. Linear in
+    # the expression, so per frame it's tongue = tongue_follow @ expr.
+    groups_all = [str(n) for n in gnm['vertex_group_names']]
+    tongue_v = gnm['vertex_groups'][groups_all.index('tongue')] > 0.5
+    teeth_v = gnm['vertex_groups'][groups_all.index('lower_teeth_and_gums')] > 0.5
+    tongue_comps = [i for i, n in enumerate(names) if n.startswith('tongue')]
+    tb = gnm['expression_basis'][tongue_comps][:, tongue_v].reshape(len(tongue_comps), -1).T.astype(np.float64)
+    full_b = gnm['expression_basis'][components]
+    target = (full_b[:, teeth_v].mean(1)[:, None, :] - full_b[:, tongue_v]).reshape(len(components), -1).T
+    tongue_follow = np.linalg.solve(tb.T @ tb + TONGUE_FOLLOW_REGULARIZATION * np.eye(tb.shape[1]),
+                                    tb.T @ target).astype(np.float32)          # (T, K)
+
     # Which iris belongs to which GNM eye joint: match by side (x sign).
     joints = [str(n) for n in gnm['joint_names']]
     jpos = gnm['template_joint_positions']
@@ -169,6 +187,8 @@ def main():
         id_basis=id_basis.reshape(IDENTITY_COMPONENTS, -1).astype(np.float32),
         id_regularization=np.float32(IDENTITY_REGULARIZATION),
         id_channels=np.array(['i_' + str(n) for n in gnm['identity_names'][:IDENTITY_COMPONENTS]]),
+        tongue_follow=tongue_follow,
+        tongue_channels=np.array(['e_' + names[i] for i in tongue_comps]),
         left_iris_row=np.int32(iris_rows['left_eye']),
         right_iris_row=np.int32(iris_rows['right_eye']),
         eye_radius=np.float32(radius),
