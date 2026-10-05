@@ -42,6 +42,66 @@ IRIS_FIRST = 468
 IRIS_CENTRES = (468, 473)
 
 
+# MediaPipe's inner-lip contours (from mediapipe face_mesh_connections), minus
+# the shared mouth corners 78 and 308.
+UPPER_INNER_LIP = [191, 80, 81, 82, 13, 312, 311, 310, 415]
+LOWER_INNER_LIP = [95, 88, 178, 87, 14, 317, 402, 318, 324]
+# Missing from the correspondence -> the landmark whose reference position
+# stands in for it (left/right twin, mirrored in x; 14 sits under 13 on a
+# closed mouth).
+MISSING_LIP_TWINS = {415: (191, True), 317: (87, True), 14: (13, False)}
+
+
+def fix_inner_lips(gnm, landmarks, vertices, rigid, reference):
+    """Re-attach MediaPipe's inner-lip landmarks to the correct GNM lip.
+
+    On a closed mouth the inner edges of both lips coincide, so the
+    render-based correspondence often matched an upper-inner-lip landmark to
+    a lower-lip vertex and vice versa (and dropped three). Driven live, an
+    opening mouth then pulls GNM's lips the wrong way: the jaw barely opens
+    while the lower lip swells. Each inner-lip landmark is re-matched to the
+    nearest vertex on the *inner edge* of its own lip.
+    """
+    groups = [str(n) for n in gnm['vertex_group_names']]
+    verts = gnm['template_vertex_positions']
+    upper = np.where(gnm['vertex_groups'][groups.index('upper_lip')] > 0.5)[0]
+    lower = np.where(gnm['vertex_groups'][groups.index('lower_lip')] > 0.5)[0]
+
+    def inner_edge(own, other):
+        # vertices of one lip lying within 1.5 mm of the other lip
+        d = np.linalg.norm(verts[own][:, None] - verts[other][None], axis=-1).min(1)
+        return own[d < 0.0015]
+
+    edges = {'upper': inner_edge(upper, lower), 'lower': inner_edge(lower, upper)}
+    landmarks, vertices = list(landmarks), list(vertices)
+    rigid, reference = list(rigid), list(reference)
+
+    for lm, (twin, mirror) in MISSING_LIP_TWINS.items():
+        if lm in landmarks or twin not in landmarks:
+            continue
+        ref = reference[landmarks.index(twin)].copy()
+        if mirror:
+            ref[0] = -ref[0]
+        landmarks.append(lm); vertices.append(-1); rigid.append(False); reference.append(ref)
+
+    changed = []
+    for side, lms in (('upper', UPPER_INNER_LIP), ('lower', LOWER_INNER_LIP)):
+        edge = edges[side]
+        for lm in lms:
+            if lm not in landmarks:
+                continue
+            row = landmarks.index(lm)
+            # nearest inner-edge vertex to where the landmarker puts this point
+            best = int(edge[np.argmin(np.linalg.norm(verts[edge] - reference[row], axis=1))])
+            if best != vertices[row]:
+                changed.append(lm)
+                vertices[row] = best
+    print('Inner-lip landmarks re-attached: %s' % changed)
+    order = np.argsort(landmarks)
+    return (np.array(landmarks, np.int32)[order], np.array(vertices, np.int32)[order],
+            np.array(rigid, bool)[order], np.array(reference, np.float32)[order])
+
+
 def main():
     if len(sys.argv) < 2:
         sys.exit(__doc__)
@@ -56,6 +116,8 @@ def main():
     vertices = corr['vertex_indices'].astype(np.int32)
     rigid = corr['rigid'].astype(bool)
     reference = corr['reference_landmarks'].astype(np.float32)
+    landmarks, vertices, rigid, reference = fix_inner_lips(
+        gnm, landmarks, vertices, rigid, reference)
     expr_rows = landmarks < IRIS_FIRST
 
     # Expression components, budgeted per region (the basis is concatenated
@@ -94,6 +156,7 @@ def main():
     np.savez_compressed(
         out,
         landmark_indices=landmarks,
+        vertex_indices=vertices,
         rigid=rigid,
         reference=reference,
         expr_rows=expr_rows,

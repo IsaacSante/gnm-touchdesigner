@@ -27,7 +27,7 @@ expr_names = [str(n) for n in gnm['expression_names']]
 idx_of = {('e_' + n): i for i, n in enumerate(expr_names)}
 comp_idx = np.array([idx_of[str(c)] for c in d['expr_channels']])
 basis_c = gnm['expression_basis'][comp_idx]                 # (K, V, 3)
-li, vi = d['landmark_indices'], np.load(os.path.join(HERE, 'correspondence.npz'))['vertex_indices']
+li, vi = d['landmark_indices'], d['vertex_indices']
 
 
 def rot_xyz(rx, ry, rz):
