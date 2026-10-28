@@ -9,8 +9,9 @@
 #   * embeds face_fit.npz (solver data) in the VFS
 #   * adds a Script CHOP `face_fit` between `override` and `to_samples`
 #   * replaces `xforms_callbacks` so tracked head/eye pose adds to the Pose page
-#   * adds a Tracking page: Landmarks CHOP, Face Tracking, Expression Gain,
-#     Max Coefficient, Tongue Follows Jaw, Depth Weight, Smoothing, Gaze Gain, Apply Identity, Calibrate Neutral Face, Clear Calibration
+#   * adds a Tracking page: MediaPipe Face Tracking, Face Tracking, Expression Gain,
+#     Max Coefficient, Tongue Follows Jaw, Depth Weight, Smoothing, Gaze Gain,
+#     Apply Identity, Emotion Gain, Calibrate Neutral Face, Clear Calibration
 #   * adds a Parameter Execute DAT that handles the two pulses
 
 import os
@@ -80,7 +81,9 @@ def install():
 
     # 4. Tracking page
     page = _page(comp, 'Tracking')
-    _par(page, 'CHOP', 'Landmarkchop', 'Landmarks CHOP')
+    if hasattr(comp.par, 'Landmarkchop'):            # Apple input, before v1.1
+        comp.par.Landmarkchop.destroy()
+    _par(page, 'COMP', 'Facetracking', 'MediaPipe Face Tracking')
     _par(page, 'Toggle', 'Tracking', 'Face Tracking', default=True)
     _par(page, 'Float', 'Expressiongain', 'Expression Gain', default=1.5, normMin=0, normMax=4)
     _par(page, 'Float', 'Maxcoefficient', 'Max Coefficient', default=3.0, normMin=0.5, normMax=5,
@@ -92,6 +95,7 @@ def install():
          min=0, max=0.95, clampMin=True, clampMax=True)
     _par(page, 'Float', 'Gazegain', 'Gaze Gain', default=1.0, normMin=0, normMax=3)
     _par(page, 'Toggle', 'Applyidentity', 'Apply Identity', default=True)
+    _par(page, 'Float', 'Emotiongain', 'Emotion Gain', default=1.5, normMin=0, normMax=4)
     _par(page, 'Pulse', 'Calibrate', 'Calibrate Neutral Face')
     _par(page, 'Pulse', 'Clearcalibration', 'Clear Calibration')
 
@@ -106,6 +110,7 @@ def onPulse(par):
     elif par.name == 'Clearcalibration':
         fit.unstore('baseline')
         fit.unstore('identity')
+        fit.unstore('baseline_shapes')
     fit.cook(force=True)
     return
 '''
@@ -119,8 +124,9 @@ def onPulse(par):
     print('Face tracking installed in', comp.path)
     if errs:
         print('  errors:', errs)
-    print('  Next: on the Tracking page, set Landmarks CHOP to an Info CHOP on your')
-    print('  Apple Face Landmarks TOP, hold a neutral face, press Calibrate Neutral Face.')
+    print('  Next: on the Tracking page, set MediaPipe Face Tracking to the face_tracking')
+    print('  COMP from Torin Blankensmith\'s MediaPipe plugin, hold a neutral face, and')
+    print('  press Calibrate Neutral Face.')
 
 
 install()

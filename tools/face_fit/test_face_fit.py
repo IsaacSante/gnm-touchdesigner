@@ -38,12 +38,18 @@ def rot_xyz(rx, ry, rz):
     return Rz @ Ry @ Rx
 
 
-def to_mediapipe(model_pts, aspect):
-    """Inverse of the solver's axis mapping (scale is arbitrary; use 2.5x)."""
-    p = model_pts * 2.5 + [0.5 * aspect, -0.5, 0]
+def to_face_tracking(model_pts):
+    """Inverse of the solver's axis mapping, in face_tracking's layout
+    (scale and offset are arbitrary; use 2.5x)."""
+    p = model_pts * 2.5 + [0.5, 0.3, 0]
     out = np.zeros((478, 3))
-    out[li] = np.stack([p[:, 0] / aspect, -p[:, 1], -p[:, 2] / aspect], -1)
+    out[li] = p * [1, 1, -1]
     return out
+
+
+def apple_to_face_tracking(lms, w, h):
+    """Apple Face Landmarks layout (y down, 0..1 of height) -> face_tracking's."""
+    return np.stack([lms[:, 0], (1 - lms[:, 1]) * h / w, lms[:, 2]], -1)
 
 
 # ---------------------------------------------------------------- 1. synthetic
@@ -65,9 +71,9 @@ for case, (rx, ry, rz), (gl, gr) in [('frontal', (0, 0, 0), ((0, 0), (0, 0))),
     R = rot_xyz(rx, ry, rz)
     centre = d['reference'][d['rigid']].mean(0)
     posed = (model - centre) @ R.T + centre
-    lms = to_mediapipe(posed, 16 / 9)
+    lms = to_face_tracking(posed)
 
-    disp_s, head_rot = ff.landmark_displacement(d, lms, 16 / 9)
+    disp_s, head_rot = ff.landmark_displacement(d, lms)
     expr, head, gaze = ff.solve(d, disp_s, head_rot)
     corr = np.corrcoef(expr, e)[0, 1]
     gain = float(expr @ e / (e @ e))
@@ -112,7 +118,7 @@ if len(sys.argv) > 2:
         name = os.path.splitext(os.path.basename(row[0]))[0]
         lms = np.array(row[7:], float).reshape(478, 3)
         w, h = Image.open(row[0]).size
-        disp_s, head_rot = ff.landmark_displacement(d, lms, w / h)
+        disp_s, head_rot = ff.landmark_displacement(d, apple_to_face_tracking(lms, w, h))
         expr, head, gaze = ff.solve(d, disp_s, head_rot)
         full = np.zeros(len(expr_names))
         full[comp_idx] = np.clip(expr * 1.5, -3, 3)             # default gain and clamp
