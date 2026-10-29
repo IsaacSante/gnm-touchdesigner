@@ -26,19 +26,21 @@ Requires TouchDesigner 2025 or newer.
 
 ## Face tracking
 
-1. Install [Torin Blankensmith's MediaPipe plugin](https://github.com/torinmb/mediapipe-touchdesigner)
-   and set up its `face_tracking` component as in his examples. On `MediaPipe`,
-   pick your webcam and turn on **Detect facial landmarks**; the other
-   detectors can stay off.
-2. On **Face Tracking**, point **MediaPipe Face Tracking** at it.
-3. Relax your face and press **Calibrate Neutral Face**.
+Uses [Torin Blankensmith's MediaPipe plugin](https://github.com/torinmb/mediapipe-touchdesigner).
+Drag its `MediaPipe.tox` into your project, then:
 
-![MediaPipe driving the head](images/face-tracking.jpg)
+1. On `MediaPipe`, pick your **Webcam**.
+2. Turn on **Detect facial landmarks** and press the **Generate GUI** above it.
+   This creates the `face_tracking` component, already wired to MediaPipe.
+   The other detectors can stay off.
 
-<details><summary>MediaPipe settings used</summary>
+<img src="images/mediapipe-settings.png" width="420" alt="MediaPipe settings: 1 Webcam, 2 Generate GUI and Detect facial landmarks">
 
-<img src="images/mediapipe-settings.png" width="420" alt="MediaPipe component settings">
-</details>
+3. On the head's **Face Tracking** page, set **MediaPipe Face Tracking** to
+   that `face_tracking` component.
+4. Relax your face and press **Calibrate Neutral Face**.
+
+![Face tracking: 2 the face_tracking component, 3 MediaPipe Face Tracking, 4 Calibrate Neutral Face](images/face-tracking.jpg)
 
 ## Outputs
 
