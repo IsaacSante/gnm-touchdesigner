@@ -3,7 +3,7 @@
 #
 #   CAPTURE='open'; p='/Users/isaac/Documents/prototypes/human-control/gnm-touchdesigner/tools/face_fit/capture_landmarks.py'; exec(open(p).read(), dict(globals(), __file__=p))
 #
-# Reads the face_tracking COMP set on the GNM component's Tracking page (or set
+# Reads the face_tracking COMP set on the GNM component's Face Tracking page (or set
 # FACE_TRACKING='/path/to/face_tracking';). Writes tools/face_fit/work/capture_<name>.npz
 # with the 478 landmarks (face_tracking's layout), the blendshapes, and the
 # component's settings and calibration for comparison. Captures 30 frames (half a second) so noise can

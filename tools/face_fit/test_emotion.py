@@ -39,6 +39,10 @@ for want, shapes in cases.items():
     ok = got_raw == want and got_cal == want
     fails += not ok
     print('%-9s raw -> %-9s calibrated -> %-9s %s' % (want, got_raw, got_cal, 'ok' if ok else 'FAIL'))
+# dominant_id holds until a challenger clearly wins
+assert ff.pick_dominant(np.array([0.48, 0, 0, 0, 0.52, 0]), 0) == 0
+assert ff.pick_dominant(np.array([0.35, 0, 0, 0, 0.65, 0]), 0) == 4
+assert ff.pick_dominant(np.array([0.52, 0, 0, 0, 0.48, 0]), 4) == 4
 s = ff.emotion_scores({})
 assert s[0] == 1 and not s[1:].any(), s
 print('uncalibrated resting face ->', winner(rest), '(why Calibrate Neutral Face matters)')

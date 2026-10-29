@@ -8,7 +8,7 @@
 #   neutral happy surprise angry sad fear dominant_id
 #
 # Input comes from the face_tracking COMP of Torin Blankensmith's MediaPipe
-# plugin, set on the Tracking page. It reads two of its outputs:
+# plugin, set on the Face Tracking page. It reads two of its outputs:
 #   facePoints    channels x, y, z, one sample per landmark (478 per face).
 #                 x is MediaPipe's, y is flipped up and scaled to width units,
 #                 z is MediaPipe's. All zeros on x when there is no face.
@@ -33,6 +33,7 @@ import numpy as np
 
 _data = None
 _smoothed = None
+_dominant = 0
 _proj_cache = {}
 
 
@@ -153,9 +154,19 @@ EMOTION_WEIGHTS = {
     'happy':    {'mouthSmile': 1.0},
     'surprise': {'jawOpen': 0.4, 'browInnerUp': 0.3, 'browOuterUp': 0.3},
     'angry':    {'browDown': 1.0, 'eyeSquint': 0.3},
-    'sad':      {'mouthFrown': 2.0, 'eyeLookDown': 0.5},
+    'sad':      {'mouthFrown': 6.0},              # MediaPipe's frown is small: ~0.1
     'fear':     {'headTilt': 0.6, 'eyeWide': 0.2, 'mouthStretch': 0.2},
 }
+
+
+# A new emotion must beat the current one by this much to take over, so
+# dominant_id doesn't flicker when two scores are close.
+HYSTERESIS = 0.1
+
+
+def pick_dominant(scores, current):
+    top = int(np.argmax(scores))
+    return top if scores[top] > scores[current] + HYSTERESIS else current
 
 
 def head_tilt(head_rot):
@@ -212,7 +223,7 @@ def _read_face(ft):
 
 
 def onCook(scriptOp):
-    global _data, _smoothed
+    global _data, _smoothed, _dominant
     comp = parent()
     src = scriptOp.inputs[0]
     scriptOp.copy(src)
@@ -283,6 +294,12 @@ def onCook(scriptOp):
             if c is not None:
                 c[0] += float(v)
 
+    # Explore page: Face Strength scales who the person is (0 = average face,
+    # 2 = caricature), Expression Strength what the face is doing
+    strength = {'i': float(comp.par.Facestrength.eval()), 'e': float(comp.par.Expressionstrength.eval())}
+    for c in scriptOp.chans():
+        c[0] *= strength[c.name[0]]
+
     # Pose and emotion channels go after the 636 coefficients; the shader only
     # reads the first 636 samples for the morph, xforms reads pose by name.
     # The channel list never changes, so nothing downstream re-binds.
@@ -290,5 +307,6 @@ def onCook(scriptOp):
         scriptOp.appendChan(name)[0] = float(v)
     for name, v in zip(EMOTIONS, emotions):
         scriptOp.appendChan(name)[0] = float(v)
-    scriptOp.appendChan('dominant_id')[0] = float(np.argmax(emotions))
+    _dominant = pick_dominant(emotions, _dominant)
+    scriptOp.appendChan('dominant_id')[0] = float(_dominant)
     return
