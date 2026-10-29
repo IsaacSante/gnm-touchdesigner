@@ -12,3 +12,16 @@ float16 quantization (max positional error ≈ 0.25 mm).
 
 The TouchDesigner integration code in the component is likewise licensed under
 the Apache License, Version 2.0.
+
+## Face tracking data
+
+The face-tracking solver data embedded in the component (`face_fit.npz` in its
+VFS) is derived from:
+
+- the GNM Head v3.0 model data above (expression and identity bases), and
+- `correspondence.npz` from **gnm-webcam-puppet**
+  (https://github.com/edualvarado/gnm-webcam-puppet), Copyright 2026 Google LLC,
+  Apache License 2.0 — the MediaPipe-landmark to GNM-vertex mapping. The solver
+  method (similarity fit on skull-fixed landmarks, then a ridge projection of
+  the displacement onto per-region expression components) follows that
+  project's `webcam_puppet/solver.py`.
